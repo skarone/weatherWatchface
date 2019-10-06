@@ -26,22 +26,29 @@ import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.support.wearable.complications.ComplicationData;
 import android.support.wearable.complications.ComplicationHelperActivity;
 import android.support.wearable.complications.rendering.ComplicationDrawable;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
+import android.text.TextPaint;
 import android.util.Log;
 import android.util.SparseArray;
 import android.view.SurfaceHolder;
 
 import com.example.android.wearable.watchface.R;
 import com.example.android.wearable.watchface.config.AnalogComplicationConfigRecyclerViewAdapter;
+import com.example.android.wearable.watchface.util.GlobalUtils;
 
 import java.util.Calendar;
 import java.util.TimeZone;
@@ -133,11 +140,11 @@ public class AnalogComplicationWatchFaceService extends CanvasWatchFaceService {
     private class Engine extends CanvasWatchFaceService.Engine {
         private static final int MSG_UPDATE_TIME = 0;
 
-        private static final float HOUR_STROKE_WIDTH = 5f;
+        private static final float HOUR_STROKE_WIDTH = 10f;
         private static final float MINUTE_STROKE_WIDTH = 3f;
-        private static final float SECOND_TICK_STROKE_WIDTH = 2f;
+        private static final float SECOND_TICK_STROKE_WIDTH = 4f;
 
-        private static final float CENTER_GAP_AND_CIRCLE_RADIUS = 4f;
+        private static final float CENTER_GAP_AND_CIRCLE_RADIUS = 10f;
 
         private static final int SHADOW_RADIUS = 6;
 
@@ -152,12 +159,27 @@ public class AnalogComplicationWatchFaceService extends CanvasWatchFaceService {
         private float mMinuteHandLength;
         private float mHourHandLength;
 
+        Bitmap mBackgroundBitmap;
+        Bitmap mForegroundBitmap;
+        Bitmap mHourBitmap;
+        Bitmap mMinuteBitmap;
+        Bitmap mSecondBitmap;
+
+        Bitmap mBackgroundScaledBitmap;
+        Bitmap mForegroundScaledBitmap;
+        Bitmap mHourScaledBitmap;
+        Bitmap mMinuteScaledBitmap;
+        Bitmap mSecondScaledBitmap;
+
         // Colors for all hands (hour, minute, seconds, ticks) based on photo loaded.
         private int mWatchHandAndComplicationsColor;
         private int mWatchHandHighlightColor;
         private int mWatchHandShadowColor;
 
         private int mBackgroundColor;
+
+        private Paint mPaint;
+        private TextPaint mTextPaint;
 
         private Paint mHourPaint;
         private Paint mMinutePaint;
@@ -234,6 +256,29 @@ public class AnalogComplicationWatchFaceService extends CanvasWatchFaceService {
                             .build());
 
             loadSavedPreferences();
+
+            Resources resources = AnalogComplicationWatchFaceService.this.getResources();
+            Drawable backgroundDrawable = resources.getDrawable(R.drawable.background);
+            mBackgroundBitmap = ((BitmapDrawable) backgroundDrawable).getBitmap();
+
+            Drawable hourDrawable = resources.getDrawable(R.drawable.hour);
+            mHourBitmap = ((BitmapDrawable) hourDrawable).getBitmap();
+
+            Drawable minuteDrawable = resources.getDrawable(R.drawable.minute);
+            mMinuteBitmap = ((BitmapDrawable) minuteDrawable).getBitmap();
+
+            Drawable foregroundDrawable = resources.getDrawable(R.drawable.foreground);
+            mForegroundBitmap = ((BitmapDrawable) foregroundDrawable).getBitmap();
+
+            Drawable secondDrawable = resources.getDrawable(R.drawable.second);
+            mSecondBitmap = ((BitmapDrawable) secondDrawable).getBitmap();
+
+            mPaint = new Paint();
+            mPaint.setFilterBitmap(true);
+
+            mTextPaint = new TextPaint();
+            mTextPaint.setAntiAlias(true);
+
             initializeComplicationsAndBackground();
             initializeWatchFace();
         }
@@ -253,7 +298,7 @@ public class AnalogComplicationWatchFaceService extends CanvasWatchFaceService {
             mWatchHandHighlightColor = mSharedPref.getInt(markerColorResourceName, Color.RED);
 
             if (mBackgroundColor == Color.WHITE) {
-                mWatchHandAndComplicationsColor = Color.BLACK;
+                mWatchHandAndComplicationsColor = Color.RED;
                 mWatchHandShadowColor = Color.WHITE;
             } else {
                 mWatchHandAndComplicationsColor = Color.WHITE;
@@ -660,10 +705,36 @@ public class AnalogComplicationWatchFaceService extends CanvasWatchFaceService {
             long now = System.currentTimeMillis();
             mCalendar.setTimeInMillis(now);
 
-            drawBackground(canvas);
-            drawComplications(canvas, now);
-            drawUnreadNotificationIcon(canvas);
-            drawWatchFace(canvas);
+            drawBackground(canvas, bounds);
+            //drawWatchFace(canvas, bounds);
+            //drawImagesWatchFace(canvas, bounds);
+            //drawComplications(canvas, now);
+            drawText(canvas, bounds);
+            //drawUnreadNotificationIcon(canvas);
+        }
+
+        private void drawText(Canvas canvas, Rect bounds){
+            Path dayPath = new Path();
+            Path battPath = new Path();
+            int width = bounds.width();
+            int height = bounds.height();
+            int x = width/2;
+            int y = height/2;
+            int radius = x/2;
+            int offset = 0;
+            dayPath.addCircle(x, y, radius, Path.Direction.CW);
+            battPath.addCircle(x, y, radius+24/2, Path.Direction.CCW);
+            //String myText = String.format("%1$tA %1$tb %1$td %1$tY at %1$tI:%1$tM %1$Tp", mCalendar);
+            String dayText = String.format("%1$tA %1$tb %1$td %1$tY", mCalendar);
+            String battText = "BATTERY: " + GlobalUtils.getBatteryInfoWatch(getApplicationContext());
+            // Log.d(TAG, "Text Size: " + dayText.length());
+            mTextPaint.setTextSize(24f);
+            canvas.save();
+            canvas.rotate(180, mCenterX, mCenterY);
+            canvas.drawTextOnPath(dayText, dayPath, 0, 0, mTextPaint);
+            canvas.rotate(180, mCenterX, mCenterY);
+            canvas.drawTextOnPath(battText, battPath, -battText.length()/2, 0, mTextPaint);
+            canvas.restore();
         }
 
         private void drawUnreadNotificationIcon(Canvas canvas) {
@@ -685,14 +756,24 @@ public class AnalogComplicationWatchFaceService extends CanvasWatchFaceService {
             }
         }
 
-        private void drawBackground(Canvas canvas) {
+        private void drawBackground(Canvas canvas, Rect bounds) {
 
-            if (mAmbient && (mLowBitAmbient || mBurnInProtection)) {
+/*            if (mAmbient && (mLowBitAmbient || mBurnInProtection)) {
                 canvas.drawColor(Color.BLACK);
 
             } else {
                 canvas.drawColor(mBackgroundColor);
+            }*/
+            int width = bounds.width();
+            int height = bounds.height();
+            // Draw the background, scaled to fit.
+            if (mBackgroundScaledBitmap == null
+                    || mBackgroundScaledBitmap.getWidth() != width
+                    || mBackgroundScaledBitmap.getHeight() != height) {
+                mBackgroundScaledBitmap = Bitmap.createScaledBitmap(mBackgroundBitmap,
+                        width, height, true /* filter */);
             }
+            canvas.drawBitmap(mBackgroundScaledBitmap, 0, 0, mPaint);
         }
 
         private void drawComplications(Canvas canvas, long currentTimeMillis) {
@@ -702,17 +783,35 @@ public class AnalogComplicationWatchFaceService extends CanvasWatchFaceService {
             for (int i = 0; i < COMPLICATION_IDS.length; i++) {
                 complicationId = COMPLICATION_IDS[i];
                 complicationDrawable = mComplicationDrawableSparseArray.get(complicationId);
+                complicationDrawable.setBorderStyleActive(0);
+                complicationDrawable.setBorderStyleAmbient(0);
+                complicationDrawable.setTextSizeActive(15);
 
                 complicationDrawable.draw(canvas, currentTimeMillis);
             }
         }
 
-        private void drawWatchFace(Canvas canvas) {
+        private void drawWatchFace(Canvas canvas, Rect bounds) {
             /*
              * Draw ticks. Usually you will want to bake this directly into the photo, but in
              * cases where you want to allow users to select their own photos, this dynamically
              * creates them on top of the photo.
              */
+
+            /*
+             * These calculations reflect the rotation in degrees per unit of time, e.g.,
+             * 360 / 60 = 6 and 360 / 12 = 30.
+             */
+            final float seconds =
+                    (mCalendar.get(Calendar.SECOND) + mCalendar.get(Calendar.MILLISECOND) / 1000f);
+            final float secondsRotation = seconds * 6f;
+
+            final float minutesRotation = mCalendar.get(Calendar.MINUTE) * 6f;
+
+            final float hourHandOffset = mCalendar.get(Calendar.MINUTE) / 2f;
+            final float hoursRotation = (mCalendar.get(Calendar.HOUR) * 30) + hourHandOffset;
+
+
             float innerTickRadius = mCenterX - 10;
             float outerTickRadius = mCenterX;
             for (int tickIndex = 0; tickIndex < 12; tickIndex++) {
@@ -728,19 +827,6 @@ public class AnalogComplicationWatchFaceService extends CanvasWatchFaceService {
                         mCenterY + outerY,
                         mTickAndCirclePaint);
             }
-
-            /*
-             * These calculations reflect the rotation in degrees per unit of time, e.g.,
-             * 360 / 60 = 6 and 360 / 12 = 30.
-             */
-            final float seconds =
-                    (mCalendar.get(Calendar.SECOND) + mCalendar.get(Calendar.MILLISECOND) / 1000f);
-            final float secondsRotation = seconds * 6f;
-
-            final float minutesRotation = mCalendar.get(Calendar.MINUTE) * 6f;
-
-            final float hourHandOffset = mCalendar.get(Calendar.MINUTE) / 2f;
-            final float hoursRotation = (mCalendar.get(Calendar.HOUR) * 30) + hourHandOffset;
 
             /*
              * Save the canvas state before we can begin to rotate it.
@@ -783,6 +869,73 @@ public class AnalogComplicationWatchFaceService extends CanvasWatchFaceService {
             canvas.restore();
         }
 
+        private void drawImagesWatchFace(Canvas canvas, Rect bounds) {
+
+            int width = bounds.width();
+            int height = bounds.height();
+            /*
+             * These calculations reflect the rotation in degrees per unit of time, e.g.,
+             * 360 / 60 = 6 and 360 / 12 = 30.
+             */
+            final float seconds =
+                    (mCalendar.get(Calendar.SECOND) + mCalendar.get(Calendar.MILLISECOND) / 1000f);
+            final float secondsRotation = seconds * 6f;
+
+            final float minutesRotation = mCalendar.get(Calendar.MINUTE) * 6f;
+
+            final float hourHandOffset = mCalendar.get(Calendar.MINUTE) / 2f;
+            final float hoursRotation = (mCalendar.get(Calendar.HOUR) * 30) + hourHandOffset;
+
+            // Rotate the hour hand
+            if (mHourScaledBitmap == null
+                    || mHourScaledBitmap.getWidth() != width
+                    || mHourScaledBitmap.getHeight() != height) {
+                mHourScaledBitmap = Bitmap.createScaledBitmap(mHourBitmap,
+                        width, height, true /* filter */);
+            }
+            // Rotate
+            canvas.save();
+            canvas.rotate(hoursRotation,canvas.getWidth()/2,canvas.getHeight()/2);
+            //canvas.drawBitmap(mHourScaledBitmap, 0, 0, mPaint);
+            canvas.restore();
+            // Draw the minute hand, scaled to fit.
+
+            // Rotate the minute hand
+            if (mMinuteScaledBitmap == null
+                    || mMinuteScaledBitmap.getWidth() != width
+                    || mMinuteScaledBitmap.getHeight() != height) {
+                mMinuteScaledBitmap = Bitmap.createScaledBitmap(mMinuteBitmap,
+                        width, height, true /* filter */);
+            }
+            // Rotate the second hand
+            canvas.save();
+            canvas.rotate(minutesRotation,canvas.getWidth()/2,canvas.getHeight()/2);
+            //canvas.drawBitmap(mMinuteScaledBitmap, 0, 0, mPaint);
+            canvas.restore();
+            // Draw foreground
+            if (mForegroundScaledBitmap == null
+                    || mForegroundScaledBitmap.getWidth() != width
+                    || mForegroundScaledBitmap.getHeight() != height) {
+                mForegroundScaledBitmap = Bitmap.createScaledBitmap(mForegroundBitmap,
+                        width, height, true /* filter */);
+            }
+            canvas.drawBitmap(mForegroundScaledBitmap, 0, 0, mPaint);
+            // Draw seconds if not in Ambient mode
+            if (!mAmbient) {
+                if (mSecondScaledBitmap == null
+                        || mSecondScaledBitmap.getWidth() != width
+                        || mSecondScaledBitmap.getHeight() != height) {
+                    mSecondScaledBitmap = Bitmap.createScaledBitmap(mSecondBitmap,
+                            width, height, true /* filter */);
+                }
+                // Rotate the second hand
+                canvas.save();
+                canvas.rotate(secondsRotation,canvas.getWidth()/2,canvas.getHeight()/2);
+                //canvas.drawBitmap(mSecondScaledBitmap, 0, 0, mPaint);
+                canvas.restore();
+
+            }
+        }
         @Override
         public void onVisibilityChanged(boolean visible) {
             super.onVisibilityChanged(visible);
